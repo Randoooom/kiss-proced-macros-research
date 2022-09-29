@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CLionExternalBuildManager">
+    <target id="ba8f1655-f87a-456a-b23e-892e9620a648" name="Fleet" defaultType="TOOL">
+      <configuration id="b1738866-8abc-4501-be8c-b4abe60ac8f8" name="Fleet">
+        <build type="TOOL">
+          <tool actionId="Tool_External Tools_Fleet" />
+        </build>
+      </configuration>
+    </target>
+  </component>
+</project>
