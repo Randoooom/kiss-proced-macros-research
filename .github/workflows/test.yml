@@ -5,6 +5,7 @@ on:
       - rust-toolchain.toml
       - src/**/*
       - src/codegen/*
+  workflow_dispatch:
 
 # from https://fleet.rs/docs/ci/linux
 jobs:
