@@ -3,8 +3,8 @@ on:
     paths:
       - Cargo.toml
       - rust-toolchain.toml
-      - src/**/*
-      - src/codegen/*
+      - src/**
+      - codegen/**
   workflow_dispatch:
 
 # from https://fleet.rs/docs/ci/linux
