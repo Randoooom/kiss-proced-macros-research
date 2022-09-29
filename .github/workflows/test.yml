@@ -4,7 +4,7 @@ on:
       - Cargo.toml
       - rust-toolchain.toml
       - src/**
-      - codegen/**
+      - tests/**
   workflow_dispatch:
 
 # from https://fleet.rs/docs/ci/linux

@@ -1,8 +1,22 @@
 [package]
-name = "kiss-proced-macros-research"
+name = "codegen"
 version = "0.1.0"
 edition = "2021"
+
+[lib]
+proc-macro = true
+doctest = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+syn = { version = "1.0.96", features = ["derive", "parsing"] }
+
+quote = "1.0.18"
+darling = "0.14.1"
+proc-macro2 = "1.0.39"
+
+[dev-dependencies]
+serde = { version = "1.0.145", features = ["derive"]}
+
+serde_json = "1.0.85"

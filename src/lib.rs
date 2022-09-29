@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2022 Fritz Ochsmann
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 extern crate darling;
 extern crate proc_macro;
 #[macro_use]
@@ -9,7 +26,6 @@ use proc_macro::TokenStream;
 
 use darling::FromMeta;
 use proc_macro2::Ident;
-use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Field, GenericArgument, Path, PathArguments, Type};
 
 #[derive(Debug, FromMeta, Clone)]
@@ -69,8 +85,6 @@ pub fn reverse_flat_macro_derive(input: TokenStream) -> TokenStream {
     let (normal_declaration, normal_idents) = impl_normal_declaration(normal_fields, &normal_ident);
 
     let expanded = quote! {
-        use serde::de::Error;
-
         // include the normal declaration here
         #normal_declaration
 
@@ -152,6 +166,8 @@ fn impl_target(ident: &Ident, mut prefix: String, path: Path) -> proc_macro2::To
 
     let expanded = quote! {
         #ident: {
+            use serde::de::Error;
+
             // convert the serde value into a new object
             let target = match value.clone() {
                 serde_json::Value::Object(mut map) => {
