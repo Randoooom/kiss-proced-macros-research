@@ -1,0 +1,51 @@
+on:
+  push:
+    paths:
+      - Cargo.toml
+      - rust-toolchain.toml
+      - src/**/*
+      - src/codegen/*
+
+# from https://fleet.rs/docs/ci/linux
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2022-08-06
+          override: true
+
+      - name: Set up Clang
+        uses: egor-tensin/setup-clang@v1
+        with:
+          version: latest
+          platform: x64
+
+      - name: Cache .cargo/bin
+        uses: actions/cache@v3
+
+        env:
+          cache-name: cache-cargo
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
+
+      - name: Install sccache
+        run: if [ -e ~/.cargo/bin/sccache ] ; then echo "Sccache is already installed"; else cargo install sccache; fi
+
+      - name: Install fleet
+        run: if [ -e ~/.cargo/bin/fleet ] ; then echo "Fleet is already installed"; else cargo install fleet-rs; fi
+
+      - name: Compile tests
+        run: fleet build --tests
+
+      - name: Run tests
+        run: cargo test
