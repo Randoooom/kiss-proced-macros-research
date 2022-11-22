@@ -11,15 +11,15 @@ extern crate serde_json;
 /// by our created 'ReverseFlat' macro
 trait ReverseFlat {
     fn reverse(value: serde_json::Value) -> Result<Self, serde_json::Error>
-        where
-            Self: Sized;
+    where
+        Self: Sized;
 }
 
 #[test]
 fn normal() {
     #[derive(ReverseFlat)]
     struct Data {
-        content: String
+        content: String,
     }
     let data = json!({ "content": "Hello, world!" });
 
@@ -32,13 +32,13 @@ fn normal() {
 fn simple_flat() {
     #[derive(ReverseFlat)]
     struct Flatted {
-        content: String
+        content: String,
     }
 
     #[derive(ReverseFlat)]
     struct Data {
-        #[reverse_flat(prefix = "flatted")]
-        flatted: Flatted
+        #[reverse(prefix = "flatted")]
+        flatted: Flatted,
     }
     let data = json!({ "flatted_content": "Hello, world!" });
 
@@ -51,12 +51,12 @@ fn simple_flat() {
 fn flat_with_root_properties() {
     #[derive(ReverseFlat)]
     struct Flatted {
-        content: String
+        content: String,
     }
 
     #[derive(ReverseFlat)]
     struct Data {
-        #[reverse_flat(prefix = "flatted")]
+        #[reverse(prefix = "flatted")]
         flatted: Flatted,
         root: String,
     }
@@ -71,60 +71,21 @@ fn flat_with_root_properties() {
 }
 
 #[test]
-fn flat_option_some() {
-    #[derive(ReverseFlat)]
-    struct Flatted {
-        content: String
-    }
-
-    #[derive(ReverseFlat)]
-    struct Data {
-        #[reverse_flat(prefix = "flatted")]
-        flatted: Option<Flatted>,
-    }
-    let data = json!({ "flatted_content": "Hello, world!"});
-
-    let processed = Data::reverse(data);
-    assert!(processed.is_ok());
-    assert_eq!(processed.unwrap().flatted.unwrap().content, "Hello, world!");
-}
-
-#[test]
-fn flat_option_none() {
-    #[derive(ReverseFlat)]
-    struct Flatted {
-        #[allow(unused)]
-        content: String
-    }
-
-    #[derive(ReverseFlat)]
-    struct Data {
-        #[reverse_flat(prefix = "flatted")]
-        flatted: Option<Flatted>,
-    }
-    let data = json!({});
-
-    let processed = Data::reverse(data);
-    assert!(processed.is_ok());
-    assert!(processed.unwrap().flatted.is_none());
-}
-
-#[test]
 fn flat_recursive() {
     #[derive(ReverseFlat)]
     struct Second {
-        message: String
+        message: String,
     }
 
     #[derive(ReverseFlat)]
     struct Flatted {
-        #[reverse_flat(prefix = "content")]
-        content: Second
+        #[reverse(prefix = "content")]
+        content: Second,
     }
 
     #[derive(ReverseFlat)]
     struct Data {
-        #[reverse_flat(prefix = "flatted")]
+        #[reverse(prefix = "flatted")]
         flatted: Flatted,
     }
     let data = json!({ "flatted_content_message": "Hello, world!" });

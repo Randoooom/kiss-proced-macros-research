@@ -26,40 +26,118 @@ use proc_macro::TokenStream;
 
 use darling::FromMeta;
 use proc_macro2::Ident;
-use syn::{Data, DeriveInput, Field, GenericArgument, Path, PathArguments, Type};
+use syn::{Data, DeriveInput, Field, Path, Type};
 
-#[derive(Debug, FromMeta, Clone)]
+#[derive(FromMeta)]
 struct ReverseFlatOptions {
     prefix: String,
 }
 
-#[derive(Debug)]
 struct TargetField {
     field: Field,
     prefix: String,
 }
 
-#[proc_macro_derive(ReverseFlat, attributes(reverse_flat))]
+/// This creates the 'normal' declaration of the target struct.
+/// It contains the definition of all the root level fields contained by it.
+///
+/// *fields* equals the `Vec<Field>` of all root level fields.
+/// *name* equals the new ident for the struct.
+fn impl_normal_declaration(
+    fields: Vec<Field>,
+    name: &Ident,
+) -> (proc_macro2::TokenStream, Vec<Ident>) {
+    // this creates the raw field definition for all the normal root fields in the struct.
+    let (field_blocks, idents) = fields
+        .into_iter()
+        .map(|field| {
+            let ident = field.ident.unwrap();
+            // extract the type of the field as a `Path`
+            let path = match field.ty {
+                Type::Path(ty_path) => ty_path.path,
+                _ => panic!("invalid type"),
+            };
+
+            (
+                quote! {
+                    #ident: #path
+                }
+                .into(),
+                ident,
+            )
+        })
+        .unzip::<_, _, Vec<proc_macro2::TokenStream>, Vec<Ident>>();
+
+    // Here we expand the root part of the reversible struct,
+    // by creating a new struct containing all the root fields which
+    // do not need to be reversed by the macro.
+    let declaration = quote! {
+        #[derive(Deserialize)]
+        struct #name {
+            #(#field_blocks,)*
+        }
+    };
+
+    (declaration.into(), idents)
+}
+
+/// This function implements the reverse transformation process for a target field
+fn impl_target(ident: &Ident, mut prefix: String, path: Path) -> proc_macro2::TokenStream {
+    // push the '_' into the prefix, because a prefix has to end with it.
+    prefix.push_str("_");
+
+    let expanded = quote! {
+        #ident: {
+            // modify the cloned instance of the target_map iterator for
+            // removing the given prefix from all fields of the child struct
+            let map = serde_json::Map::from_iter(
+                target_map
+                .clone()
+                .into_iter()
+                .filter_map(|(key, value)| {
+                    return if key.starts_with(#prefix) {
+                        Some((key.replacen(#prefix, "", 1) ,value))
+                    } else {
+                        None
+                    }
+            }));
+            // convert the map into a `serde_json::Value`
+            let value = serde_json::Value::from(map);
+
+            #path::reverse(value)?
+        },
+    };
+
+    expanded.into()
+}
+
+#[proc_macro_derive(ReverseFlat, attributes(reverse))]
 pub fn reverse_flat_macro_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
 
-    // parse the data
+    // match the enum type of the data and only accept the `DataStruct`
+    // otherwise the macro will cause a panic.
     let data = match input.data {
         Data::Struct(data) => data,
         _ => panic!("Expected struct"),
     };
 
+    // create empty vectors for storing data of the targets and the normal fields
     let mut normal_fields: Vec<Field> = Vec::new();
     let mut target_usage: Vec<proc_macro2::TokenStream> = Vec::new();
 
-    // iter through the given struct
+    // iter through all fields of the parsed `DataStruct`
     data.fields.into_iter().for_each(|field| {
-        // get the given attributes of the field
+        // access the given attributes of the field
         let attributes = &field.attrs;
 
+        // iter through them and try to find an attribute ( / only the first) matching an instance
+        // of the `ReverseFlatOption` struct.
         match attributes.into_iter().find_map(|attribute| {
             match ReverseFlatOptions::from_meta(&attribute.parse_meta().unwrap()) {
+                // if the attribute matches the struct, return a build `TargetField`.
+                // Otherwise the `find_map` will skip the attribute
                 Ok(options) => Some(TargetField {
                     prefix: options.prefix,
                     field: field.clone(),
@@ -68,11 +146,13 @@ pub fn reverse_flat_macro_derive(input: TokenStream) -> TokenStream {
             }
         }) {
             Some(target) => {
+                // extract the path of the target
                 let path = match target.field.ty {
-                    Type::Path(typath) => typath.path,
+                    Type::Path(type_path) => type_path.path,
                     _ => panic!("Expected path"),
                 };
 
+                // expand the usage for the specific target
                 let usage = impl_target(target.field.ident.as_ref().unwrap(), target.prefix, path);
                 target_usage.push(usage);
             }
@@ -90,8 +170,15 @@ pub fn reverse_flat_macro_derive(input: TokenStream) -> TokenStream {
 
         impl ReverseFlat for #name {
             fn reverse(value: serde_json::Value) -> std::result::Result<Self, serde_json::Error> {
+                use serde::de::Error;
+
                 // parse here the normal root object
                 let root = serde_json::from_value::<#normal_ident>(value.clone())?;
+                // gain a `serde_json::Value::Object` out of the given value and extract the map
+                let target_map = match value {
+                    serde_json::Value::Object(map) => Ok(map),
+                    _ => Err(serde_json::Error::custom("Invalid type: expected object")),
+                }?;
 
                 // Now we got all of our parts together and "just" need to build the final object
                 Ok(
@@ -102,93 +189,6 @@ pub fn reverse_flat_macro_derive(input: TokenStream) -> TokenStream {
                 )
             }
         }
-    };
-
-    expanded.into()
-}
-
-fn impl_normal_declaration(
-    fields: Vec<Field>,
-    name: &Ident,
-) -> (proc_macro2::TokenStream, Vec<Ident>) {
-    // separate the ident and the type
-    let idents = fields
-        .iter()
-        .map(|field| field.ident.clone().unwrap())
-        .collect::<Vec<Ident>>();
-    let paths = fields
-        .iter()
-        .map(|field| match &field.ty {
-            syn::Type::Path(ty_path) => &ty_path.path,
-            _ => panic!("invalid type"),
-        })
-        .collect::<Vec<&Path>>();
-
-    let expanded = quote! {
-        #[derive(Deserialize)]
-        struct #name {
-            #(#idents : #paths,)*
-        }
-    };
-
-    (expanded.into(), idents)
-}
-
-fn impl_target(ident: &Ident, mut prefix: String, path: Path) -> proc_macro2::TokenStream {
-    // push the '_' into the prefix
-    prefix.push_str("_");
-
-    // check if the target path is an option
-    let is_option =
-        path.segments.len() == 1 && path.segments.iter().next().unwrap().ident == "Option";
-    let creation = if is_option {
-        // parse the generic type from the option
-        let type_params = &path.segments.first().unwrap().arguments;
-        let generic = match type_params {
-            PathArguments::AngleBracketed(params) => match params.args.iter().next().unwrap() {
-                GenericArgument::Type(ty) => ty,
-                _ => panic!("Invalid option generic"),
-            },
-            _ => panic!("Missing option generic"),
-        };
-
-        quote! {
-            match #generic::reverse(target) {
-                Ok(value) => Some(value),
-                Err(_) => None,
-            }
-        }
-    } else {
-        quote! {
-            #path::reverse(target)?
-        }
-    };
-
-    let expanded = quote! {
-        #ident: {
-            use serde::de::Error;
-
-            // convert the serde value into a new object
-            let target = match value.clone() {
-                serde_json::Value::Object(mut map) => {
-                    // take the ownership of the map and apply filter map on it
-                    map = serde_json::Map::from_iter(map
-                        .into_iter()
-                        .filter_map(|(key, value)| {
-                        return if key.starts_with(#prefix) {
-                            Some((key.replacen(#prefix, "", 1) ,value))
-                        } else {
-                            None
-                        }
-                    }));
-
-                    Ok(serde_json::Value::from(map))
-                },
-                _ => Err(serde_json::Error::custom("Expected object"))
-            }?;
-
-            #creation
-        },
     };
 
     expanded.into()
